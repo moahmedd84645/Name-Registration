@@ -12,6 +12,8 @@ const App: React.FC = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [inputValue, setInputValue] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editedContact, setEditedContact] = useState<Contact>({ name: '', phone: '' });
 
   const handleAddContacts = useCallback(() => {
     if (!inputValue.trim()) {
@@ -26,25 +28,17 @@ const App: React.FC = () => {
     lines.forEach(line => {
       if (!line.trim()) return;
 
-      // Find a sequence of digits that looks like a phone number.
-      // This is more robust than splitting by space.
       const phoneMatch = line.match(/\+?[0-9\s-]{7,}/);
-      
-      if (!phoneMatch) return; // Skip lines without a clear number
+      if (!phoneMatch) return;
 
       const phoneRaw = phoneMatch[0];
-      // Clean the phone number to be digits only
       const phoneClean = phoneRaw.replace(/\D/g, '');
-
-      // The rest of the string is the name
       const nameRaw = line.replace(phoneRaw, '');
-      // Clean the name from anything that isn't a letter or space
       const nameClean = nameRaw.replace(/[^a-zA-Z\u0600-\u06FF\s]/g, '').trim();
       
-      // Add if both name and phone are valid and phone doesn't already exist
       if (nameClean && phoneClean && !existingPhones.has(phoneClean)) {
         newContacts.push({ name: nameClean, phone: phoneClean });
-        existingPhones.add(phoneClean); // Add to set to check duplicates within the same batch
+        existingPhones.add(phoneClean);
       }
     });
 
@@ -54,8 +48,6 @@ const App: React.FC = () => {
     }
 
     const updatedContacts = [...contacts, ...newContacts];
-    
-    // Sort alphabetically by name, using 'ar' locale for proper Arabic character sorting.
     updatedContacts.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 
     setContacts(updatedContacts);
@@ -66,7 +58,6 @@ const App: React.FC = () => {
   const handleDownload = useCallback(() => {
     if (contacts.length === 0) return;
 
-    // Prepare data with correct headers for the worksheet.
     const dataToExport = contacts.map(contact => ({
       "الاسم": contact.name,
       "رقم التليفون": contact.phone,
@@ -76,16 +67,58 @@ const App: React.FC = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "الأسماء والأرقام");
 
-    // Trigger the file download.
     XLSX.writeFile(wb, "الأسماء_والأرقام.xlsx");
   }, [contacts]);
+
+  const handleEdit = (contact: Contact, index: number) => {
+    setEditingIndex(index);
+    setEditedContact({ ...contact });
+    setError('');
+  };
+
+  const handleCancel = () => {
+    setEditingIndex(null);
+    setError('');
+  };
+
+  const handleSave = (indexToSave: number) => {
+    if (!editedContact.name.trim() || !editedContact.phone.trim()) {
+      setError('لا يمكن ترك الاسم أو رقم الهاتف فارغًا.');
+      return;
+    }
+    const phoneExists = contacts.some((c, i) => c.phone === editedContact.phone && i !== indexToSave);
+    if (phoneExists) {
+      setError('رقم الهاتف هذا موجود بالفعل.');
+      return;
+    }
+
+    const updatedContacts = [...contacts];
+    updatedContacts[indexToSave] = editedContact;
+    updatedContacts.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+    
+    setContacts(updatedContacts);
+    setEditingIndex(null);
+    setError('');
+  };
+
+  const handleDeleteContact = useCallback((indexToDelete: number) => {
+    if (window.confirm('هل أنت متأكد من حذف هذا السجل؟')) {
+      setContacts(prev => prev.filter((_, index) => index !== indexToDelete));
+    }
+  }, []);
+
+  const handleEditInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setEditedContact(prev => ({ ...prev, [name]: name === 'phone' ? value.replace(/\D/g, '') : value }));
+  };
+
 
   return (
     <div className="bg-gray-50 min-h-screen flex items-center justify-center font-sans p-4" dir="rtl">
       <div className="w-full max-w-3xl bg-white p-8 rounded-2xl shadow-lg space-y-6">
         <header className="text-center">
           <h1 className="text-4xl font-bold text-gray-800">مدير الأسماء والأرقام</h1>
-          <p className="text-gray-500 mt-2">أدخل الأسماء مع أرقام الهواتف لتنظيمها وتصديرها بضغطة زر.</p>
+          <p className="text-gray-500 mt-2">أدخل، عدّل، ونظّم الأسماء مع أرقام الهواتف لتصديرها بضغطة زر.</p>
         </header>
 
         <div className="space-y-4">
@@ -98,16 +131,18 @@ const App: React.FC = () => {
               }}
               placeholder="مثال:&#10;محمد عبدالله 0551234567&#10;فاطمة خالد, 0509876543&#10;سارة علي - 0588765432"
               rows={6}
-              className="w-full p-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200 text-lg"
+              className="w-full p-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200 text-lg disabled:bg-gray-100"
+              disabled={editingIndex !== null}
             />
             <button
               onClick={handleAddContacts}
-              className="bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-200 shadow-sm text-lg"
+              disabled={editingIndex !== null}
+              className="bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-200 shadow-sm text-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               إضافة البيانات
             </button>
           </div>
-          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+          {error && editingIndex === null && <p className="text-red-500 text-sm text-center">{error}</p>}
         </div>
 
         <div className="border-t border-gray-200 pt-6 space-y-4">
@@ -120,7 +155,7 @@ const App: React.FC = () => {
             </div>
             <button
               onClick={handleDownload}
-              disabled={contacts.length === 0}
+              disabled={contacts.length === 0 || editingIndex !== null}
               className="bg-green-600 text-white font-semibold py-2 px-5 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed shadow-sm flex items-center gap-2"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -129,6 +164,7 @@ const App: React.FC = () => {
               <span>تحميل Excel</span>
             </button>
           </div>
+          {error && editingIndex !== null && <p className="text-red-500 text-sm text-center -mb-2">{error}</p>}
           
           <div className="bg-gray-50 border border-gray-200 rounded-lg h-72 overflow-y-auto">
             {contacts.length > 0 ? (
@@ -137,13 +173,70 @@ const App: React.FC = () => {
                         <tr>
                             <th className="p-3 text-lg font-semibold text-gray-600 border-b-2 border-gray-200">الاسم</th>
                             <th className="p-3 text-lg font-semibold text-gray-600 border-b-2 border-gray-200">رقم التليفون</th>
+                            <th className="p-3 text-lg font-semibold text-gray-600 border-b-2 border-gray-200 text-center w-32">الإجراءات</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                         {contacts.map((contact, index) => (
-                        <tr key={`${contact.phone}-${index}`} className="hover:bg-gray-100">
-                            <td className="p-3 text-gray-800 text-lg">{contact.name}</td>
-                            <td className="p-3 text-gray-600 text-lg font-mono text-left" dir="ltr">{contact.phone}</td>
+                        <tr key={`${contact.phone}-${index}`} className={editingIndex === index ? "bg-yellow-50" : "hover:bg-gray-100"}>
+                           {editingIndex === index ? (
+                            <>
+                              <td className="p-2 align-middle">
+                                  <input
+                                      type="text"
+                                      name="name"
+                                      value={editedContact.name}
+                                      onChange={handleEditInputChange}
+                                      className="w-full p-2 border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500 text-lg"
+                                      aria-label="Edit Name"
+                                  />
+                              </td>
+                              <td className="p-2 align-middle">
+                                  <input
+                                      type="text"
+                                      name="phone"
+                                      value={editedContact.phone}
+                                      onChange={handleEditInputChange}
+                                      className="w-full p-2 border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500 font-mono text-left text-lg"
+                                      dir="ltr"
+                                      aria-label="Edit Phone"
+                                  />
+                              </td>
+                              <td className="p-2 align-middle">
+                                  <div className="flex items-center justify-center gap-3">
+                                      <button onClick={() => handleSave(index)} className="p-1 text-green-600 hover:text-green-800 hover:bg-green-100 rounded-full" aria-label="Save changes">
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                          </svg>
+                                      </button>
+                                      <button onClick={handleCancel} className="p-1 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-full" aria-label="Cancel edit">
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                          </svg>
+                                      </button>
+                                  </div>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="p-3 text-gray-800 text-lg">{contact.name}</td>
+                              <td className="p-3 text-gray-600 text-lg font-mono text-left" dir="ltr">{contact.phone}</td>
+                              <td className="p-3 align-middle">
+                                  <div className="flex items-center justify-center gap-4">
+                                      <button onClick={() => handleEdit(contact, index)} disabled={editingIndex !== null} className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-full disabled:text-gray-300 disabled:hover:bg-transparent disabled:cursor-not-allowed" aria-label={`Edit ${contact.name}`}>
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />
+                                          </svg>
+                                      </button>
+                                      <button onClick={() => handleDeleteContact(index)} disabled={editingIndex !== null} className="p-1 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-full disabled:text-gray-300 disabled:hover:bg-transparent disabled:cursor-not-allowed" aria-label={`Delete ${contact.name}`}>
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                          </svg>
+                                      </button>
+                                  </div>
+                              </td>
+                            </>
+                          )}
                         </tr>
                         ))}
                     </tbody>
