@@ -66,8 +66,6 @@ const App: React.FC = () => {
     }
 
     const updatedContacts = [...contacts, ...newContacts];
-    // updatedContacts.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
-
     setContacts(updatedContacts);
     setInputValue('');
     setError('');
@@ -125,8 +123,6 @@ const App: React.FC = () => {
     
     const updatedContacts = [...contacts];
     updatedContacts[indexToSave] = { name: trimmedName, phone: trimmedPhone };
-    // updatedContacts.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
-    
     setContacts(updatedContacts);
     setEditingIndex(null);
     setEditError({});
